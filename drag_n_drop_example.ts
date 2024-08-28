@@ -155,12 +155,18 @@ function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
     let xpos = x + noise * (Math.random() * 2 - 1);
     let ypos = y + noise * (Math.random() * 2 - 1);
     let color = chroma.random().hex();
+    console.log(node_label);
     graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: color });
 
     return graph;
 }
 
 function place_new_edge(graph, node1, node2) {
+    // no self loops
+    if (node1 == node2){
+        return;
+    }
+
     // if none of the nodes exist, add them in the center with a random noise
     if (!graph.hasNode(node1) && !graph.hasNode(node2)) {
         place_new_node(graph, node1, 0, 0);
@@ -190,8 +196,8 @@ function place_new_edge(graph, node1, node2) {
 // Telegram data
 
 function to_simulation_time(real_time) {
-    let total_time = 100.0;
-    let sim_time = total_time * (real_time - Date.parse("2019-01-01")) / (5*365*24*60*60*1000);
+    let total_time = 0.1;
+    let sim_time = total_time * (real_time - Date.parse("2020-06-06")) / (365*24*60*60*1000.0);
     return sim_time;
 }
 
@@ -218,9 +224,7 @@ async function step(graph, time, forward_message) {
 let parse = new Parser("public/sv_forwards.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
-console.log(forward_messages[100]);
-console.log(forward_messages[1000]);
-console.log(forward_messages[1001]);
+
 
 (async () => {
 
@@ -232,5 +236,8 @@ console.log(forward_messages[1001]);
         let message = forward_messages[i];
         await step(graph, time, message);
         time = message.time;
+        console.log(message);
+        console.log(new Date(time));
+        console.log(i);
     }
 })();
