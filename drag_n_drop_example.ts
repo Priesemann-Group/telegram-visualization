@@ -52,13 +52,6 @@ class Parser{
     }
 };
 
-
-let parse = new Parser("public/sv_forwards.csv");
-parse.load_data().then(() => {
-    console.log(parse.forwards[0]);
-    // Start code here..
-});
-
 // import { onStoryDown } from "../utils";
 
 // Retrieve the html document for sigma container
@@ -84,8 +77,6 @@ function create_mock_messages(num_messages) {
     }
     return forward_messages;
 }
-
-const forward_messages = create_mock_messages(num_messages);
 
 //==============================================================================
 // Visualization
@@ -196,7 +187,9 @@ function place_new_edge(graph, node1, node2) {
 // Telegram data
 
 function to_simulation_time(real_time) {
-    return real_time;
+    let total_time = 100.0;
+    let sim_time = total_time * (real_time - Date.parse("2019-01-01")) / (5*365*24*60*60*1000);
+    return sim_time;
 }
 
 function to_real_time(simulation_time) {
@@ -218,7 +211,14 @@ async function step(graph, time, forward_message) {
     return graph;
 }
 
+
+let parse = new Parser("public/sv_forwards.csv");
+await parse.load_data();
+const forward_messages = parse.forwards;
+console.log(forward_messages[100]);
+
 (async () => {
+
     let graph = new Graph();
     init_visualization(graph);
 
