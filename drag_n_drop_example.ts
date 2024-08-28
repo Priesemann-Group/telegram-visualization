@@ -44,8 +44,11 @@ class Parser{
                     let date = Date.parse(parts[3]);
                     let fwd = new Forward(date,from,to);
                     P.forwards.push(fwd);
-                    P.complete = true;
                 }
+                // sort the forwards
+                P.forwards.sort((a:Forward,b:Forward) =>{
+                    return a.time-b.time;
+                })
                 resolve();
             }).catch((e) => console.error(e));
         });
@@ -216,6 +219,8 @@ let parse = new Parser("public/sv_forwards.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
 console.log(forward_messages[100]);
+console.log(forward_messages[1000]);
+console.log(forward_messages[1001]);
 
 (async () => {
 
