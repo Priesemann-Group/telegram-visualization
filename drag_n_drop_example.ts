@@ -44,8 +44,11 @@ class Parser {
                     let date = Date.parse(parts[3]);
                     let fwd = new Forward(date, from, to);
                     P.forwards.push(fwd);
-                    P.complete = true;
                 }
+                // sort the forwards
+                P.forwards.sort((a: Forward, b: Forward) => {
+                    return a.time - b.time;
+                })
                 resolve();
             }).catch((e) => console.error(e));
         });
@@ -151,6 +154,7 @@ function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
     let xpos = x + noise * (Math.random() * 2 - 1);
     let ypos = y + noise * (Math.random() * 2 - 1);
     let color = chroma.random().hex();
+    console.log(node_label);
     graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: color });
 
     return graph;
@@ -195,7 +199,7 @@ function to_simulation_time(real_time) {
     let total_sim_time = 100.0;
     let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
     // real time that corresponds to sim_time = 0
-    let start_time = Date.parse("2021-01-01");
+    let start_time = Date.parse("2020-06-06");
     let sim_time = total_sim_time * (real_time - start_time) / miliseconds_per_year;
     return sim_time;
 }
@@ -205,7 +209,7 @@ function to_real_time(simulation_time) {
     let total_sim_time = 100.0;
     let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
     // real time that corresponds to sim_time = 0
-    let start_time = Date.parse("2021-01-01");
+    let start_time = Date.parse("2020-06-06");
     let real_time = start_time + simulation_time * miliseconds_per_year / total_sim_time;
     return real_time;
 }
@@ -229,7 +233,7 @@ async function step(graph, time, forward_message) {
 let parse = new Parser("public/sv_forwards.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
-console.log(forward_messages[100]);
+
 
 (async () => {
 
@@ -248,5 +252,7 @@ console.log(forward_messages[100]);
         real_time = message.time;
         real_time_string = new Date(real_time).toLocaleDateString("de-DE");
         current_time_element.innerHTML = real_time_string;
+        console.log(message);
+        console.log(i);
     }
 })();
