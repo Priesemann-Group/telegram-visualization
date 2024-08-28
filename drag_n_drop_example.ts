@@ -3,6 +3,63 @@ import { create } from "domain";
 import Graph from "graphology";
 import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
+import { v4 as uuid } from "uuid";
+
+class Forward{
+    time: number; // ms since 1.1.1970
+    from_chat_id: number;
+    to_chat_id: number;
+    
+    constructor(t:number,from:number,to:number){
+        this.time = t;
+        this.from_chat_id = from;
+        this.to_chat_id = to;
+    }
+}
+
+/// Parser
+class Parser{
+    forwards: Forward[];
+    complete: Boolean;
+    file_path: string;
+
+    constructor(file_path:string){
+        this.forwards = []
+        this.complete = false;
+        this.file_path = file_path;
+        
+        console.log(this.file_path);
+    }
+
+    load_data(){
+        let P = this;
+        return new Promise<void>(function(resolve){
+            fetch(P.file_path).then((res) => res.text()).then((text) => {
+                let lines = text.split("\n");
+                let n = lines.length;
+                for(let i = 1; i<lines.length; i++){
+                    let parts = lines[i].split(',');
+                    let from = parseInt(parts[1]);
+                    let to = parseInt(parts[2]);
+                    let date = Date.parse(parts[3]);
+                    let fwd = new Forward(date,from,to);
+                    P.forwards.push(fwd);
+                    P.complete = true;
+                }
+                resolve();
+            }).catch((e) => console.error(e));
+        });
+    }
+};
+
+
+let parse = new Parser("public/sv_forwards.csv");
+parse.load_data().then(() => {
+    console.log(parse.forwards[0]);
+    // Start code here..
+});
+
+// import { onStoryDown } from "../utils";
 
 // Retrieve the html document for sigma container
 const container = document.getElementById("container") as HTMLElement;
