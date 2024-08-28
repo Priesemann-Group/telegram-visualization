@@ -236,8 +236,18 @@ const forward_messages = parse.forwards;
         let message = forward_messages[i];
         await step(graph, time, message);
         time = message.time;
-        console.log(message);
+        /*console.log(message);
         console.log(new Date(time));
-        console.log(i);
+        console.log(i);*/
+        const degrees = graph.mapNodes((node) => {
+            return graph.degree(node);
+        });
+        //console.log(degrees);
+        graph.forEachNode((node, i) => {
+            graph.mergeNodeAttributes(node,{
+                size:1+graph.degree(node)
+            });
+            //graph.setNodeAttribute(node, "size", );
+        });
     }
 })();
