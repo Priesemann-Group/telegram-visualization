@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "@types/node": "^22.5.0",
+    "@types/sigmajs": "^1.0.32",
+    "graphology": "^0.25.4",
+    "kotatsu": "^0.23.1",
+    "sigma": "^3.0.0-beta.28",
+    "typescript": "^5.5.4"
+  },
+  "scripts": {
+    "start": "kotatsu serve sigma_example.ts --index sigma_example.html --ts --html5-routing",
+    "build": "tsc mygraph.ts"
+  }
+}
