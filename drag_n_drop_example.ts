@@ -261,7 +261,7 @@ const forward_messages = parse.forwards;
         //console.log(degrees);
         graph.forEachNode((node, i) => {
             graph.mergeNodeAttributes(node,{
-                size:1+graph.degree(node)
+                size:2.5+1.0*Math.sqrt(graph.degree(node))
             });
             //graph.setNodeAttribute(node, "size", );
         });
