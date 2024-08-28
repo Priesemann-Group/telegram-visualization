@@ -5,12 +5,12 @@ import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
 import { v4 as uuid } from "uuid";
 
-class Forward{
+class Forward {
     time: number; // ms since 1.1.1970
     from_chat_id: number;
     to_chat_id: number;
-    
-    constructor(t:number,from:number,to:number){
+
+    constructor(t: number, from: number, to: number) {
         this.time = t;
         this.from_chat_id = from;
         this.to_chat_id = to;
@@ -18,31 +18,31 @@ class Forward{
 }
 
 /// Parser
-class Parser{
+class Parser {
     forwards: Forward[];
     complete: Boolean;
     file_path: string;
 
-    constructor(file_path:string){
+    constructor(file_path: string) {
         this.forwards = []
         this.complete = false;
         this.file_path = file_path;
-        
+
         console.log(this.file_path);
     }
 
-    load_data(){
+    load_data() {
         let P = this;
-        return new Promise<void>(function(resolve){
+        return new Promise<void>(function (resolve) {
             fetch(P.file_path).then((res) => res.text()).then((text) => {
                 let lines = text.split("\n");
                 let n = lines.length;
-                for(let i = 1; i<lines.length; i++){
+                for (let i = 1; i < lines.length; i++) {
                     let parts = lines[i].split(',');
                     let from = parseInt(parts[1]);
                     let to = parseInt(parts[2]);
                     let date = Date.parse(parts[3]);
-                    let fwd = new Forward(date,from,to);
+                    let fwd = new Forward(date, from, to);
                     P.forwards.push(fwd);
                     P.complete = true;
                 }
@@ -52,10 +52,9 @@ class Parser{
     }
 };
 
-// import { onStoryDown } from "../utils";
-
 // Retrieve the html document for sigma container
 const container = document.getElementById("container") as HTMLElement;
+const current_time_element = document.getElementById("current_time") as HTMLElement;
 const num_nodes = 100;
 
 // mock message data
@@ -158,6 +157,11 @@ function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
 }
 
 function place_new_edge(graph, node1, node2) {
+    // if node1 = node2, do nothing
+    if (node1 == node2) {
+        return
+    }
+
     // if none of the nodes exist, add them in the center with a random noise
     if (!graph.hasNode(node1) && !graph.hasNode(node2)) {
         place_new_node(graph, node1, 0, 0);
@@ -187,13 +191,23 @@ function place_new_edge(graph, node1, node2) {
 // Telegram data
 
 function to_simulation_time(real_time) {
-    let total_time = 100.0;
-    let sim_time = total_time * (real_time - Date.parse("2019-01-01")) / (5*365*24*60*60*1000);
+    // how long should the simulation take in seconds
+    let total_sim_time = 100.0;
+    let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
+    // real time that corresponds to sim_time = 0
+    let start_time = Date.parse("2021-01-01");
+    let sim_time = total_sim_time * (real_time - start_time) / miliseconds_per_year;
     return sim_time;
 }
 
 function to_real_time(simulation_time) {
-    return simulation_time;
+    // how long should the simulation take in seconds
+    let total_sim_time = 100.0;
+    let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
+    // real time that corresponds to sim_time = 0
+    let start_time = Date.parse("2021-01-01");
+    let real_time = start_time + simulation_time * miliseconds_per_year / total_sim_time;
+    return real_time;
 }
 
 async function step(graph, time, forward_message) {
@@ -222,10 +236,17 @@ console.log(forward_messages[100]);
     let graph = new Graph();
     init_visualization(graph);
 
-    let time = 0;
+    let sim_time = 0;
+    let real_time = to_real_time(sim_time);
+    let real_time_string = new Date(real_time).toLocaleDateString("de-DE");
+
+    current_time_element.innerHTML = real_time_string;
+
     for (let i = 0; i < num_messages; i++) {
         let message = forward_messages[i];
-        await step(graph, time, message);
-        time = message.time;
+        await step(graph, real_time, message);
+        real_time = message.time;
+        real_time_string = new Date(real_time).toLocaleDateString("de-DE");
+        current_time_element.innerHTML = real_time_string;
     }
 })();
