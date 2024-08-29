@@ -7,13 +7,13 @@ function delay(ms) {
 }
 
 const graph = new Graph();
-graph.addNode("1", { label: "Node 1", x: 0, y: 0, size: 10, color: "blue" });
+graph.addNode("1", { label: "Node 1", x: 0, y: 0, size: 10, color: "red" });
 graph.addNode("2", { label: "Node 2", x: 1, y: 1, size: 20, color: "red" });
-graph.addEdge("1", "2", { size: 5, color: "purple" });
+graph.addEdge("1", "2", { size: 1, color: "black" });
 
 // Instantiate sigma.js and render the graph
 const sigmaInstance = new Sigma(graph, document.getElementById("container"));
-await delay(1000)
-graph.addNode("3", { label: "Node 3", x: 0, y: 1, size: 20, color: "yellow" });
-await delay(1000)
-graph.addEdge("1", "3", { size: 5, color: "purple" });
+await delay(2000)
+graph.addNode("3", { label: "Node 3", x: 0, y: 1, size: 20, color: "red" });
+await delay(2000)
+graph.addEdge("1", "3", { size: 1, color: "black" });

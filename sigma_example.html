@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
+    <link rel="stylesheet" href="/public/simple.css">
     <meta charset="UTF-8" />
-    <title>Quick Sigma.js Example</title>
-<!--     <script src="./sigma.min.js"></script> -->
-<!--     <script src="./graphology.umd.min.js"></script> -->
+    <title>Telegram graph visualization</title>
     <link rel="apple-touch-icon" sizes="180x180" href="/public/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/public/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/public/favicon/favicon-16x16.png">
@@ -13,8 +11,14 @@
   </head>
   <body>
     <h1>🌌 Telegram graph visualization</h1>
+    <p>🇸🇪 The evolution of the Swedish telegram channels over time. <br>
+      <ul>
+      <li>342 nodes</li>
+      <li>14725 edges</li>
+    </ul>
+    </p>
     <div id="container" style="width: 800px; height: 600px; background: #ffffff00"></div>
-    <span id="current_time" style="font-size: 16pt; font-family: sans-serif;"> </span>
+    <p>Current time: <span id="current_time" style="font-size: 16pt; font-family: sans-serif;"> </span></p>
     <script src="/build/bundle.js"></script>
   </body>
 </html>

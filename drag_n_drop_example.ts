@@ -185,7 +185,7 @@ function place_new_edge(graph, node1, node2) {
 
     // if the edge does not exist, add it
     if (!graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
-        graph.addEdge(node1, node2);
+        graph.addEdge(node1, node2, { color: "#555555" });
     }
 
     return graph;
