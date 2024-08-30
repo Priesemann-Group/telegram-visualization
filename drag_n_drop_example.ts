@@ -117,7 +117,7 @@ function create_mock_messages(num_messages) {
 
 function init_visualization(graph) {
     // Create the spring layout and start it
-    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 10, inertia: 0.85 } });
+    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 2, inertia: 0.85 } });
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
