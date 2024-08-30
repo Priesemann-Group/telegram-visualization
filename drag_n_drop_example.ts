@@ -22,8 +22,8 @@ class Chat {
     id: number;
     lang: string;
     name: string;
-    
-    constructor(at:number,id:number,name:string,lang:string){
+
+    constructor(at: number, id: number, name: string, lang: string) {
         this.activation_time = at;
         this.id = id;
         this.lang = lang;
@@ -39,7 +39,7 @@ class Parser {
     fwd_path: string;
     chat_path: string;
 
-    constructor(fwd_path: string,chat_path: string) {
+    constructor(fwd_path: string, chat_path: string) {
         this.forwards = [];
         this.chats = [];
         this.complete = false;
@@ -77,7 +77,7 @@ class Parser {
                         let id = parseInt(parts[2]);
                         let name = parts[4];
                         let lang = parts[5];
-                        let chat = new Chat(0,id,name,lang);
+                        let chat = new Chat(0, id, name, lang);
                         P.chats.push(chat);
                     }
                     resolve();
@@ -117,7 +117,7 @@ function create_mock_messages(num_messages) {
 
 function init_visualization(graph) {
     // Create the spring layout and start it
-    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: {gravity: 0.0001, maxMove: 10, inertia:0.85} });
+    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 10, inertia: 0.85 } });
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
@@ -225,7 +225,9 @@ function place_new_edge(graph, node1_id, node2_id) {
 
     // if the edge does not exist, add it
     if (!graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
-        graph.addEdge(node1_id, node2_id);
+        let style = getComputedStyle(document.body);
+        let edge_color = style.getPropertyValue('--text-light');
+        graph.addEdge(node1_id, node2_id, { color: edge_color });
     }
 
     return graph;
@@ -251,7 +253,7 @@ function to_real_time(simulation_time) {
     // real time that corresponds to sim_time = 0
     let start_time = Date.parse("2020-06-06");
     let real_time = start_time + simulation_time * miliseconds_per_year / total_sim_time;
-    return real_time;   
+    return real_time;
 }
 
 async function step(graph, time, forward_message) {
@@ -270,7 +272,7 @@ async function step(graph, time, forward_message) {
 }
 
 
-let parse = new Parser("public/norsk_forwards.csv","public/norsk_chats.csv");
+let parse = new Parser("public/norsk_forwards.csv", "public/norsk_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
 let color = new Array(parse.chats.length);
@@ -278,23 +280,23 @@ let names = new Array(parse.chats.length);
 /*
  Make an array: chat_id => color
 */
-function lang_to_color(l:string){
-    if(l=="sv"){
+function lang_to_color(l: string) {
+    if (l == "sv") {
         return "blue";
     }
-    if(l=="no"){
+    if (l == "no") {
         return "red";
     }
-    if(l=="fi"){
+    if (l == "fi") {
         return "green";
     }
-    if(l=="da"){
+    if (l == "da") {
         return "pink";
     }
     return "black";
 }
 
-for (let i=0; i<color.length;i++){
+for (let i = 0; i < color.length; i++) {
     let id = parse.chats[i].id;
     color[id] = lang_to_color(parse.chats[i].lang);
     names[id] = parse.chats[i].name;
