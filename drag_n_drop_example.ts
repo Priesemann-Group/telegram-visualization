@@ -175,6 +175,11 @@ function enable_drag_n_drop(graph, renderer) {
         if (!renderer.getCustomBBox()) renderer.setCustomBBox(renderer.getBBox());
     });
 
+    // open links on right click
+    renderer.on("rightClickNode", (e) => {
+        window.open("https://t.me/"+graph.getNodeAttributes(e.node).label, '_blank');
+    });
+
     return renderer;
 }
 
@@ -182,46 +187,47 @@ function enable_drag_n_drop(graph, renderer) {
 // Graph operations
 
 
-function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
+function place_new_node(graph, node_id, x = 0, y = 0, noise = 1) {
     let xpos = x + noise * (Math.random() * 2 - 1);
     let ypos = y + noise * (Math.random() * 2 - 1);
     //let color = chroma.random().hex();
     // color according to language
-    let node_color = color[node_label];
-    console.log(node_label);
-    graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: node_color });
+    let node_color = color[node_id];
+    graph.addNode(node_id, { x: xpos, y: ypos, size: 3, color: node_color, label: names[node_id] });
 
     return graph;
 }
 
-function place_new_edge(graph, node1, node2) {
+function place_new_edge(graph, node1_id, node2_id) {
     // if node1 = node2, do nothing
-    if (node1 == node2) {
+    if (node1_id == node2_id) {
         return
     }
+    let node1_label = names[node1_id];
+    let node2_label = names[node2_id];
 
     // if none of the nodes exist, add them in the center with a random noise
-    if (!graph.hasNode(node1) && !graph.hasNode(node2)) {
-        place_new_node(graph, node1, 0, 0);
-        place_new_node(graph, node2, 0, 0);
+    if (!graph.hasNode(node1_id) && !graph.hasNode(node2_id)) {
+        place_new_node(graph, node1_id, 0, 0);
+        place_new_node(graph, node2_id, 0, 0);
     }
 
     // if only one exists, add the other one close to it
-    if (!graph.hasNode(node1) && graph.hasNode(node2)) {
-        let node2_coords = graph.getNodeAttributes(node2, "x", "y");
-        place_new_node(graph, node1, node2_coords.x, node2_coords.y);
+    if (!graph.hasNode(node1_id) && graph.hasNode(node2_id)) {
+        let node2_coords = graph.getNodeAttributes(node2_id, "x", "y");
+        place_new_node(graph, node1_id, node2_coords.x, node2_coords.y);
     }
 
-    if (graph.hasNode(node1) && !graph.hasNode(node2)) {
-        let node1_coords = graph.getNodeAttributes(node1, "x", "y");
-        place_new_node(graph, node2, node1_coords.x, node1_coords.y);
+    if (graph.hasNode(node1_id) && !graph.hasNode(node2_id)) {
+        let node1_coords = graph.getNodeAttributes(node1_id, "x", "y");
+        place_new_node(graph, node2_id, node1_coords.x, node1_coords.y);
     }
 
     // if the edge does not exist, add it
-    if (!graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
+    if (!graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
         let style = getComputedStyle(document.body);
         let edge_color = style.getPropertyValue('--text-light');
-        graph.addEdge(node1, node2, { color: edge_color });
+        graph.addEdge(node1_id, node2_id, { color: edge_color });
     }
 
     return graph;
@@ -270,6 +276,7 @@ let parse = new Parser("public/norsk_forwards.csv", "public/norsk_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
 let color = new Array(parse.chats.length);
+let names = new Array(parse.chats.length);
 /*
  Make an array: chat_id => color
 */
@@ -292,6 +299,7 @@ function lang_to_color(l: string) {
 for (let i = 0; i < color.length; i++) {
     let id = parse.chats[i].id;
     color[id] = lang_to_color(parse.chats[i].lang);
+    names[id] = parse.chats[i].name;
 }
 
 (async () => {
@@ -319,8 +327,8 @@ for (let i = 0; i < color.length; i++) {
         });
         //console.log(degrees);
         graph.forEachNode((node, i) => {
-            graph.mergeNodeAttributes(node, {
-                size: 2.1 + 0.8 * Math.sqrt(graph.degree(node))
+            graph.mergeNodeAttributes(node,{
+                size:2.1+0.85*Math.sqrt(graph.degree(node))
             });
         });
     }
