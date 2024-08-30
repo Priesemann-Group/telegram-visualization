@@ -509,3 +509,12 @@
     margin: 0;
     padding: 0;
   }
+
+.dot {
+  height: 10px;
+  width: 30px;
+  background-color: var(--marked);
+  border-radius: 5%;
+  display: inline-block;
+  margin-right: 2ex;
+}

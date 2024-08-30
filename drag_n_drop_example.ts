@@ -5,6 +5,10 @@ import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
 import { v4 as uuid } from "uuid";
 
+
+const scale_exp_decay = 0.000001;
+const log_thresh = -10000;
+
 class Forward {
     time: number; // ms since 1.1.1970
     from_chat_id: number;
@@ -177,7 +181,7 @@ function enable_drag_n_drop(graph, renderer) {
 
     // open links on right click
     renderer.on("rightClickNode", (e) => {
-        window.open("https://t.me/"+graph.getNodeAttributes(e.node).label, '_blank');
+        window.open("https://t.me/" + graph.getNodeAttributes(e.node).label, '_blank');
     });
 
     return renderer;
@@ -193,12 +197,12 @@ function place_new_node(graph, node_id, x = 0, y = 0, noise = 1) {
     //let color = chroma.random().hex();
     // color according to language
     let node_color = color[node_id];
-    graph.addNode(node_id, { x: xpos, y: ypos, size: 3, color: node_color, label: names[node_id] });
+    graph.addNode(node_id, { x: xpos, y: ypos, color: node_color, label: names[node_id] });
 
     return graph;
 }
 
-function place_new_edge(graph, node1_id, node2_id) {
+function place_some_edge(graph, node1_id, node2_id, Tnow) {
     // if node1 = node2, do nothing
     if (node1_id == node2_id) {
         return
@@ -223,11 +227,28 @@ function place_new_edge(graph, node1_id, node2_id) {
         place_new_node(graph, node2_id, node1_coords.x, node1_coords.y);
     }
 
+    function update_edge_properties(nodeA, nodeB) {
+        if (graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
+            graph.updateEdge(node1_id, node2_id, attr => {
+                return {
+                    ...attr,
+                    // size: 1 + Math.log(attr.weight + 1),
+                    size: 1 + attr.log_A,
+                    weight: (attr.weight || 0) + 1,
+                    log_A: Math.log(1 + Math.exp(attr.log_A) * Math.exp(-scale_exp_decay * (Tnow - attr.Tlast))),
+                    Tlast: Tnow,
+                };
+            });
+        }
+    }
+    update_edge_properties(node1_id, node2_id);
+    update_edge_properties(node2_id, node1_id);
+
     // if the edge does not exist, add it
     if (!graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
         let style = getComputedStyle(document.body);
         let edge_color = style.getPropertyValue('--text-light');
-        graph.addEdge(node1_id, node2_id, { color: edge_color });
+        graph.addEdge(node1_id, node2_id, { color: edge_color, weight: 1, log_A: 0, Tlast: Tnow });
     }
 
     return graph;
@@ -266,7 +287,7 @@ async function step(graph, time, forward_message) {
     // sleep for time step
     await new Promise((resolve) => setTimeout(resolve, delta_time_sim * 1000));
 
-    place_new_edge(graph, node1, node2);
+    place_some_edge(graph, node1, node2, time);
 
     return graph;
 }
@@ -282,16 +303,16 @@ let names = new Array(parse.chats.length);
 */
 function lang_to_color(l: string) {
     if (l == "sv") {
-        return "blue";
+        return "#FFCD00";
     }
     if (l == "no") {
-        return "red";
+        return "#BA0C2F";
     }
     if (l == "fi") {
-        return "green";
+        return "rgb(50, 204, 255)";
     }
     if (l == "da") {
-        return "pink";
+        return "rgb(244, 142, 59)";
     }
     return "black";
 }
@@ -327,9 +348,16 @@ for (let i = 0; i < color.length; i++) {
         });
         //console.log(degrees);
         graph.forEachNode((node, i) => {
-            graph.mergeNodeAttributes(node,{
-                size:2.1+0.85*Math.sqrt(graph.degree(node))
+            graph.mergeNodeAttributes(node, {
+                size: 3 * (1 + Math.log(1 + graph.degree(node)))
+                // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
             });
         });
+        graph.forEachEdge((edge, i) => {
+            if (scale_exp_decay * (real_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
+                graph.dropEdge(edge);
+            };
+        });
+
     }
 })();
