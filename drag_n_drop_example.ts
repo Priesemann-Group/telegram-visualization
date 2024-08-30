@@ -17,24 +17,43 @@ class Forward {
     }
 }
 
+class Chat {
+    activation_time: number; // for avalanche visuals
+    id: number;
+    lang: string;
+    name: string;
+    
+    constructor(at:number,id:number,name:string,lang:string){
+        this.activation_time = at;
+        this.id = id;
+        this.lang = lang;
+        this.name = name;
+    }
+}
+
 /// Parser
 class Parser {
     forwards: Forward[];
+    chats: Chat[];
     complete: Boolean;
-    file_path: string;
+    fwd_path: string;
+    chat_path: string;
 
-    constructor(file_path: string) {
-        this.forwards = []
+    constructor(fwd_path: string,chat_path: string) {
+        this.forwards = [];
+        this.chats = [];
         this.complete = false;
-        this.file_path = file_path;
+        this.fwd_path = fwd_path;
+        this.chat_path = chat_path;
 
-        console.log(this.file_path);
+        console.log(this.fwd_path);
     }
 
     load_data() {
         let P = this;
         return new Promise<void>(function (resolve) {
-            fetch(P.file_path).then((res) => res.text()).then((text) => {
+            // load the forward data
+            fetch(P.fwd_path).then((res) => res.text()).then((text) => {
                 let lines = text.split("\n");
                 let n = lines.length;
                 for (let i = 1; i < lines.length; i++) {
@@ -49,7 +68,20 @@ class Parser {
                 P.forwards.sort((a: Forward, b: Forward) => {
                     return a.time - b.time;
                 })
-                resolve();
+                // load chat data
+                fetch(P.chat_path).then((res) => res.text()).then((text) => {
+                    let lines = text.split("\n");
+                    let n = lines.length;
+                    for (let i = 1; i < lines.length; i++) {
+                        let parts = lines[i].split(',');
+                        let id = parseInt(parts[2]);
+                        let name = parts[4];
+                        let lang = parts[5];
+                        let chat = new Chat(0,id,name,lang);
+                        P.chats.push(chat);
+                    }
+                    resolve();
+                });
             }).catch((e) => console.error(e));
         });
     }
@@ -85,7 +117,7 @@ function create_mock_messages(num_messages) {
 
 function init_visualization(graph) {
     // Create the spring layout and start it
-    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted });
+    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: {gravity: 0.0001, maxMove: 10, inertia:0.85} });
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
@@ -153,9 +185,11 @@ function enable_drag_n_drop(graph, renderer) {
 function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
     let xpos = x + noise * (Math.random() * 2 - 1);
     let ypos = y + noise * (Math.random() * 2 - 1);
-    let color = chroma.random().hex();
+    //let color = chroma.random().hex();
+    // color according to language
+    let node_color = color[node_label];
     console.log(node_label);
-    graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: color });
+    graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: node_color });
 
     return graph;
 }
@@ -196,7 +230,7 @@ function place_new_edge(graph, node1, node2) {
 
 function to_simulation_time(real_time) {
     // how long should the simulation take in seconds
-    let total_sim_time = 100.0;
+    let total_sim_time = 10.0;
     let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
     // real time that corresponds to sim_time = 0
     let start_time = Date.parse("2020-06-06");
@@ -211,7 +245,7 @@ function to_real_time(simulation_time) {
     // real time that corresponds to sim_time = 0
     let start_time = Date.parse("2020-06-06");
     let real_time = start_time + simulation_time * miliseconds_per_year / total_sim_time;
-    return real_time;
+    return real_time;   
 }
 
 async function step(graph, time, forward_message) {
@@ -230,10 +264,33 @@ async function step(graph, time, forward_message) {
 }
 
 
-let parse = new Parser("public/sv_forwards.csv");
+let parse = new Parser("public/norsk_forwards.csv","public/norsk_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
+let color = new Array(parse.chats.length);
+/*
+ Make an array: chat_id => color
+*/
+function lang_to_color(l:string){
+    if(l=="sv"){
+        return "blue";
+    }
+    if(l=="no"){
+        return "red";
+    }
+    if(l=="fi"){
+        return "green";
+    }
+    if(l=="da"){
+        return "pink";
+    }
+    return "black";
+}
 
+for (let i=0; i<color.length;i++){
+    let id = parse.chats[i].id;
+    color[id] = lang_to_color(parse.chats[i].lang);
+}
 
 (async () => {
 
@@ -246,13 +303,23 @@ const forward_messages = parse.forwards;
 
     current_time_element.innerHTML = real_time_string;
 
-    for (let i = 0; i < num_messages; i++) {
+    for (let i = 0; i < parse.forwards.length; i++) {
         let message = forward_messages[i];
-        await step(graph, real_time, message);
         real_time = message.time;
         real_time_string = new Date(real_time).toLocaleDateString("de-DE");
         current_time_element.innerHTML = real_time_string;
-        console.log(message);
-        console.log(i);
+        await step(graph, real_time, message);
+        /*console.log(message);
+        console.log(new Date(time));
+        console.log(i);*/
+        const degrees = graph.mapNodes((node) => {
+            return graph.degree(node);
+        });
+        //console.log(degrees);
+        graph.forEachNode((node, i) => {
+            graph.mergeNodeAttributes(node,{
+                size:2.1+0.8*Math.sqrt(graph.degree(node))
+            });
+        });
     }
 })();
