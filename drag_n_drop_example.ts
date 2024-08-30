@@ -21,24 +21,43 @@ class Forward {
     }
 }
 
+class Chat {
+    activation_time: number; // for avalanche visuals
+    id: number;
+    lang: string;
+    name: string;
+
+    constructor(at: number, id: number, name: string, lang: string) {
+        this.activation_time = at;
+        this.id = id;
+        this.lang = lang;
+        this.name = name;
+    }
+}
+
 /// Parser
 class Parser {
     forwards: Forward[];
+    chats: Chat[];
     complete: Boolean;
-    file_path: string;
+    fwd_path: string;
+    chat_path: string;
 
-    constructor(file_path: string) {
-        this.forwards = []
+    constructor(fwd_path: string, chat_path: string) {
+        this.forwards = [];
+        this.chats = [];
         this.complete = false;
-        this.file_path = file_path;
+        this.fwd_path = fwd_path;
+        this.chat_path = chat_path;
 
-        console.log(this.file_path);
+        console.log(this.fwd_path);
     }
 
     load_data() {
         let P = this;
         return new Promise<void>(function (resolve) {
-            fetch(P.file_path).then((res) => res.text()).then((text) => {
+            // load the forward data
+            fetch(P.fwd_path).then((res) => res.text()).then((text) => {
                 let lines = text.split("\n");
                 let n = lines.length;
                 for (let i = 1; i < lines.length; i++) {
@@ -53,7 +72,20 @@ class Parser {
                 P.forwards.sort((a: Forward, b: Forward) => {
                     return a.time - b.time;
                 })
-                resolve();
+                // load chat data
+                fetch(P.chat_path).then((res) => res.text()).then((text) => {
+                    let lines = text.split("\n");
+                    let n = lines.length;
+                    for (let i = 1; i < lines.length; i++) {
+                        let parts = lines[i].split(',');
+                        let id = parseInt(parts[2]);
+                        let name = parts[4];
+                        let lang = parts[5];
+                        let chat = new Chat(0, id, name, lang);
+                        P.chats.push(chat);
+                    }
+                    resolve();
+                });
             }).catch((e) => console.error(e));
         });
     }
@@ -89,7 +121,7 @@ function create_mock_messages(num_messages) {
 
 function init_visualization(graph) {
     // Create the spring layout and start it
-    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted });
+    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 10, inertia: 0.85 } });
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
@@ -147,6 +179,11 @@ function enable_drag_n_drop(graph, renderer) {
         if (!renderer.getCustomBBox()) renderer.setCustomBBox(renderer.getBBox());
     });
 
+    // open links on right click
+    renderer.on("rightClickNode", (e) => {
+        window.open("https://t.me/" + graph.getNodeAttributes(e.node).label, '_blank');
+    });
+
     return renderer;
 }
 
@@ -154,42 +191,45 @@ function enable_drag_n_drop(graph, renderer) {
 // Graph operations
 
 
-function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
+function place_new_node(graph, node_id, x = 0, y = 0, noise = 1) {
     let xpos = x + noise * (Math.random() * 2 - 1);
     let ypos = y + noise * (Math.random() * 2 - 1);
-    let color = chroma.random().hex();
-    console.log(node_label);
-    graph.addNode(node_label, { x: xpos, y: ypos, size: 3, color: color });
+    //let color = chroma.random().hex();
+    // color according to language
+    let node_color = color[node_id];
+    graph.addNode(node_id, { x: xpos, y: ypos, color: node_color, label: names[node_id] });
 
     return graph;
 }
 
-function place_some_edge(graph, node1, node2, Tnow) {
+function place_some_edge(graph, node1_id, node2_id, Tnow) {
     // if node1 = node2, do nothing
-    if (node1 == node2) {
+    if (node1_id == node2_id) {
         return
     }
+    let node1_label = names[node1_id];
+    let node2_label = names[node2_id];
 
     // if none of the nodes exist, add them in the center with a random noise
-    if (!graph.hasNode(node1) && !graph.hasNode(node2)) {
-        place_new_node(graph, node1, 0, 0);
-        place_new_node(graph, node2, 0, 0);
+    if (!graph.hasNode(node1_id) && !graph.hasNode(node2_id)) {
+        place_new_node(graph, node1_id, 0, 0);
+        place_new_node(graph, node2_id, 0, 0);
     }
 
     // if only one exists, add the other one close to it
-    if (!graph.hasNode(node1) && graph.hasNode(node2)) {
-        let node2_coords = graph.getNodeAttributes(node2, "x", "y");
-        place_new_node(graph, node1, node2_coords.x, node2_coords.y);
+    if (!graph.hasNode(node1_id) && graph.hasNode(node2_id)) {
+        let node2_coords = graph.getNodeAttributes(node2_id, "x", "y");
+        place_new_node(graph, node1_id, node2_coords.x, node2_coords.y);
     }
 
-    if (graph.hasNode(node1) && !graph.hasNode(node2)) {
-        let node1_coords = graph.getNodeAttributes(node1, "x", "y");
-        place_new_node(graph, node2, node1_coords.x, node1_coords.y);
+    if (graph.hasNode(node1_id) && !graph.hasNode(node2_id)) {
+        let node1_coords = graph.getNodeAttributes(node1_id, "x", "y");
+        place_new_node(graph, node2_id, node1_coords.x, node1_coords.y);
     }
 
     function update_edge_properties(nodeA, nodeB) {
-        if (graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
-            graph.updateEdge(node1, node2, attr => {
+        if (graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
+            graph.updateEdge(node1_id, node2_id, attr => {
                 return {
                     ...attr,
                     // size: 1 + Math.log(attr.weight + 1),
@@ -201,12 +241,14 @@ function place_some_edge(graph, node1, node2, Tnow) {
             });
         }
     }
-    update_edge_properties(node1, node2);
-    update_edge_properties(node2, node1);
+    update_edge_properties(node1_id, node2_id);
+    update_edge_properties(node2_id, node1_id);
 
     // if the edge does not exist, add it
-    if (!graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
-        graph.addEdge(node1, node2, { weight: 1, log_A: 0, Tlast: Tnow });
+    if (!graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
+        let style = getComputedStyle(document.body);
+        let edge_color = style.getPropertyValue('--text-light');
+        graph.addEdge(node1_id, node2_id, { color: edge_color, weight: 1, log_A: 0, Tlast: Tnow });
     }
 
     return graph;
@@ -217,7 +259,7 @@ function place_some_edge(graph, node1, node2, Tnow) {
 
 function to_simulation_time(real_time) {
     // how long should the simulation take in seconds
-    let total_sim_time = 100.0;
+    let total_sim_time = 10.0;
     let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
     // real time that corresponds to sim_time = 0
     let start_time = Date.parse("2020-06-06");
@@ -251,10 +293,35 @@ async function step(graph, time, forward_message) {
 }
 
 
-let parse = new Parser("public/sv_forwards.csv");
+let parse = new Parser("public/norsk_forwards.csv", "public/norsk_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
+let color = new Array(parse.chats.length);
+let names = new Array(parse.chats.length);
+/*
+ Make an array: chat_id => color
+*/
+function lang_to_color(l: string) {
+    if (l == "sv") {
+        return "blue";
+    }
+    if (l == "no") {
+        return "red";
+    }
+    if (l == "fi") {
+        return "green";
+    }
+    if (l == "da") {
+        return "pink";
+    }
+    return "black";
+}
 
+for (let i = 0; i < color.length; i++) {
+    let id = parse.chats[i].id;
+    color[id] = lang_to_color(parse.chats[i].lang);
+    names[id] = parse.chats[i].name;
+}
 
 (async () => {
 
@@ -267,7 +334,7 @@ const forward_messages = parse.forwards;
 
     current_time_element.innerHTML = real_time_string;
 
-    for (let i = 0; i < num_messages; i++) {
+    for (let i = 0; i < parse.forwards.length; i++) {
         let message = forward_messages[i];
         real_time = message.time;
         real_time_string = new Date(real_time).toLocaleDateString("de-DE");
@@ -283,8 +350,8 @@ const forward_messages = parse.forwards;
         graph.forEachNode((node, i) => {
             graph.mergeNodeAttributes(node, {
                 size: 3 * (1 + Math.log(1 + graph.degree(node)))
+                // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
             });
-            //graph.setNodeAttribute(node, "size", );
         });
         graph.forEachEdge((edge, i) => {
             if (scale_exp_decay * (real_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
