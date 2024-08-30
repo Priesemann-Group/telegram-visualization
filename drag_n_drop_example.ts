@@ -121,7 +121,7 @@ function create_mock_messages(num_messages) {
 
 function init_visualization(graph) {
     // Create the spring layout and start it
-    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 10, inertia: 0.85 } });
+    const layout = new ForceSupervisor(graph, { isNodeFixed: (_, attr) => attr.highlighted, settings: { gravity: 0.0001, maxMove: 10, inertia: 0.1 } });
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
@@ -303,16 +303,16 @@ let names = new Array(parse.chats.length);
 */
 function lang_to_color(l: string) {
     if (l == "sv") {
-        return "blue";
+        return "#FFCD00";
     }
     if (l == "no") {
-        return "red";
+        return "#BA0C2F";
     }
     if (l == "fi") {
-        return "green";
+        return "rgb(50, 204, 255)";
     }
     if (l == "da") {
-        return "pink";
+        return "rgb(244, 142, 59)";
     }
     return "black";
 }
