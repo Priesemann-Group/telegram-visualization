@@ -5,6 +5,10 @@ import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
 import { v4 as uuid } from "uuid";
 
+
+const scale_exp_decay = 0.000001;
+const log_thresh = -10000;
+
 class Forward {
     time: number; // ms since 1.1.1970
     from_chat_id: number;
@@ -160,7 +164,7 @@ function place_new_node(graph, node_label, x = 0, y = 0, noise = 1) {
     return graph;
 }
 
-function place_new_edge(graph, node1, node2) {
+function place_some_edge(graph, node1, node2, Tnow) {
     // if node1 = node2, do nothing
     if (node1 == node2) {
         return
@@ -183,9 +187,26 @@ function place_new_edge(graph, node1, node2) {
         place_new_node(graph, node2, node1_coords.x, node1_coords.y);
     }
 
+    function update_edge_properties(nodeA, nodeB) {
+        if (graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
+            graph.updateEdge(node1, node2, attr => {
+                return {
+                    ...attr,
+                    // size: 1 + Math.log(attr.weight + 1),
+                    size: 1 + attr.log_A,
+                    weight: (attr.weight || 0) + 1,
+                    log_A: Math.log(1 + Math.exp(attr.log_A) * Math.exp(-scale_exp_decay * (Tnow - attr.Tlast))),
+                    Tlast: Tnow,
+                };
+            });
+        }
+    }
+    update_edge_properties(node1, node2);
+    update_edge_properties(node2, node1);
+
     // if the edge does not exist, add it
     if (!graph.hasEdge(node1, node2) && !graph.hasEdge(node2, node1)) {
-        graph.addEdge(node1, node2);
+        graph.addEdge(node1, node2, { weight: 1, log_A: 0, Tlast: Tnow });
     }
 
     return graph;
@@ -224,7 +245,7 @@ async function step(graph, time, forward_message) {
     // sleep for time step
     await new Promise((resolve) => setTimeout(resolve, delta_time_sim * 1000));
 
-    place_new_edge(graph, node1, node2);
+    place_some_edge(graph, node1, node2, time);
 
     return graph;
 }
@@ -260,10 +281,16 @@ const forward_messages = parse.forwards;
         });
         //console.log(degrees);
         graph.forEachNode((node, i) => {
-            graph.mergeNodeAttributes(node,{
-                size:1+graph.degree(node)
+            graph.mergeNodeAttributes(node, {
+                size: 3 * (1 + Math.log(1 + graph.degree(node)))
             });
             //graph.setNodeAttribute(node, "size", );
         });
+        graph.forEachEdge((edge, i) => {
+            if (scale_exp_decay * (real_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
+                graph.dropEdge(edge);
+            };
+        });
+
     }
 })();
