@@ -7,7 +7,7 @@ import { v4 as uuid } from "uuid";
 
 
 const scale_exp_decay = 0.000001;
-const log_thresh = -10000;
+const log_thresh = -5000;
 
 class Forward {
     time: number; // ms since 1.1.1970
@@ -197,7 +197,10 @@ function place_new_node(graph, node_id, x = 0, y = 0, noise = 1) {
     //let color = chroma.random().hex();
     // color according to language
     let node_color = color[node_id];
-    graph.addNode(node_id, { x: xpos, y: ypos, color: node_color, label: names[node_id] });
+    graph.addNode(node_id, {
+        x: xpos, y: ypos, color: node_color, label: names[node_id]
+
+    });
 
     return graph;
 }
