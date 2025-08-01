@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "skipLibCheck": true,
+    "outDir": "./build",
+    "module": "ES2022",
+    "moduleResolution": "bundler"
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
