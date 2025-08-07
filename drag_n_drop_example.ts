@@ -6,7 +6,8 @@ import Sigma from "sigma";
 import { v4 as uuid } from "uuid";
 
 
-const scale_exp_decay = 0.000001;
+// const scale_exp_decay = 0.000001;
+const scale_exp_decay = 0.00000001;
 const log_thresh = -5000;
 
 class Forward {
@@ -94,7 +95,16 @@ class Parser {
 // Retrieve the html document for sigma container
 const container = document.getElementById("container") as HTMLElement;
 const current_time_element = document.getElementById("current_time") as HTMLElement;
+const pausePlayBtn = document.getElementById("pause-play-btn") as HTMLButtonElement;
+const restartBtn = document.getElementById("restart-btn") as HTMLButtonElement;
 const num_nodes = 100;
+
+// Animation control state
+let isPaused = false;
+let animationResolver: (() => void) | null = null;
+let shouldRestart = false;
+let restartResolver: (() => void) | null = null;
+let isAnimationComplete = false;
 
 // mock message data
 const num_messages = 6000;
@@ -125,8 +135,11 @@ function init_visualization(graph) {
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
-    // Create the sigma
-    const renderer = new Sigma(graph, container);
+    // Create the sigma with settings to hide labels by default
+    const renderer = new Sigma(graph, container, {
+        renderLabels: false, // Hide all labels by default
+        renderEdgeLabels: false
+    });
 
     enable_drag_n_drop(graph, renderer);
 
@@ -184,6 +197,16 @@ function enable_drag_n_drop(graph, renderer) {
         window.open("https://t.me/" + graph.getNodeAttributes(e.node).label, '_blank');
     });
 
+    // Show label on hover
+    renderer.on("enterNode", (e) => {
+        graph.setNodeAttribute(e.node, "forceLabel", true);
+    });
+
+    // Hide label when not hovering
+    renderer.on("leaveNode", (e) => {
+        graph.removeNodeAttribute(e.node, "forceLabel");
+    });
+
     return renderer;
 }
 
@@ -198,8 +221,7 @@ function place_new_node(graph, node_id, x = 0, y = 0, noise = 1) {
     // color according to language
     let node_color = color[node_id];
     graph.addNode(node_id, {
-        x: xpos, y: ypos, color: node_color, label: names[node_id]
-
+        x: xpos, y: ypos, color: node_color, label: names[node_id],
     });
 
     return graph;
@@ -281,6 +303,11 @@ function to_real_time(simulation_time) {
 }
 
 async function step(graph, time, forward_message) {
+    // Check if restart was requested
+    if (shouldRestart) {
+        throw new Error("RESTART_REQUESTED");
+    }
+
     let delta_time_real = forward_message.time - time;
     let delta_time_sim = to_simulation_time(delta_time_real);
 
@@ -290,9 +317,83 @@ async function step(graph, time, forward_message) {
     // sleep for time step
     await new Promise((resolve) => setTimeout(resolve, delta_time_sim * 1000));
 
+    // Check if paused and wait if necessary
+    if (isPaused) {
+        await new Promise<void>((resolve) => {
+            animationResolver = resolve;
+        });
+    }
+
+    // Check again if restart was requested while paused
+    if (shouldRestart) {
+        throw new Error("RESTART_REQUESTED");
+    }
+
     place_some_edge(graph, node1, node2, time);
 
     return graph;
+}
+
+function setAnimationComplete() {
+    isAnimationComplete = true;
+    isPaused = true;
+    pausePlayBtn.innerHTML = 'Play';
+    pausePlayBtn.disabled = true;
+    pausePlayBtn.style.opacity = '0.5';
+    pausePlayBtn.style.cursor = 'not-allowed';
+    console.log("Animation completed - all timestamps processed");
+}
+
+function resetAnimationState() {
+    isAnimationComplete = false;
+    isPaused = false;
+    pausePlayBtn.innerHTML = 'Pause';
+    pausePlayBtn.disabled = false;
+    pausePlayBtn.style.opacity = '1';
+    pausePlayBtn.style.cursor = 'pointer';
+}
+
+// Setup pause/play button functionality
+function setupPausePlayButton() {
+    pausePlayBtn.addEventListener('click', () => {
+        // Don't allow play if animation is complete
+        if (isAnimationComplete) {
+            return;
+        }
+
+        isPaused = !isPaused;
+
+        if (isPaused) {
+            pausePlayBtn.innerHTML = 'Play';
+            // pausePlayBtn.style.background = '#f44336';
+        } else {
+            pausePlayBtn.innerHTML = 'Pause';
+            // pausePlayBtn.style.background = '#4CAF50';
+
+            // Resume animation if it was waiting
+            if (animationResolver) {
+                animationResolver();
+                animationResolver = null;
+            }
+        }
+    });
+
+    restartBtn.addEventListener('click', () => {
+        shouldRestart = true;
+
+        // Reset animation state when restarting
+        resetAnimationState();
+
+        // If paused, resume to allow restart to proceed
+        if (isPaused && animationResolver) {
+            animationResolver();
+            animationResolver = null;
+        }
+
+        // Reset pause state
+        isPaused = false;
+        pausePlayBtn.innerHTML = 'Pause';
+    });
 }
 
 
@@ -326,11 +427,7 @@ for (let i = 0; i < color.length; i++) {
     names[id] = parse.chats[i].name;
 }
 
-(async () => {
-
-    let graph = new Graph();
-    init_visualization(graph);
-
+async function runAnimation(graph) {
     let sim_time = 0;
     let real_time = to_real_time(sim_time);
     let real_time_string = new Date(real_time).toLocaleDateString("de-DE");
@@ -342,7 +439,17 @@ for (let i = 0; i < color.length; i++) {
         real_time = message.time;
         real_time_string = new Date(real_time).toLocaleDateString("de-DE");
         current_time_element.innerHTML = real_time_string;
-        await step(graph, real_time, message);
+
+        try {
+            await step(graph, real_time, message);
+        } catch (error) {
+            if (error.message === "RESTART_REQUESTED") {
+                throw error; // Re-throw to be caught by the main loop
+            }
+            console.error("Unexpected error:", error);
+            break;
+        }
+
         /*console.log(message);
         console.log(new Date(time));
         console.log(i);*/
@@ -361,6 +468,49 @@ for (let i = 0; i < color.length; i++) {
                 graph.dropEdge(edge);
             };
         });
+    }
 
+    // Animation completed - set the completion state
+    setAnimationComplete();
+}
+
+(async () => {
+    let graph = new Graph();
+    let renderer = init_visualization(graph);
+
+    // Setup pause/play functionality
+    setupPausePlayButton();
+
+    while (true) {
+        try {
+            // Reset restart flag
+            shouldRestart = false;
+
+            // Clear the graph for restart
+            graph.clear();
+
+            await runAnimation(graph);
+
+            // If we reach here, animation completed normally
+            // Wait for restart instead of breaking
+            await new Promise<void>((resolve) => {
+                const waitForRestart = () => {
+                    if (shouldRestart) {
+                        resolve();
+                    } else {
+                        setTimeout(waitForRestart, 100);
+                    }
+                };
+                waitForRestart();
+            });
+        } catch (error) {
+            if (error.message === "RESTART_REQUESTED") {
+                console.log("Restarting animation...");
+                continue; // Restart the loop
+            } else {
+                console.error("Animation error:", error);
+                break;
+            }
+        }
     }
 })();
