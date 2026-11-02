@@ -1,14 +1,15 @@
-import chroma from "chroma-js";
-import { create } from "domain";
 import Graph from "graphology";
 import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
-import { v4 as uuid } from "uuid";
 
 
 // const scale_exp_decay = 0.000001;
 const scale_exp_decay = 0.00000001;
 const log_thresh = -5000;
+// wall-clock duration of the whole animation, in seconds
+const animation_duration_s = 100;
+// cap on the wall-clock time advanced per frame, so that e.g. a hidden tab doesn't cause a jump
+const max_frame_ms = 100;
 
 class Forward {
     time: number; // ms since 1.1.1970
@@ -23,13 +24,11 @@ class Forward {
 }
 
 class Chat {
-    activation_time: number; // for avalanche visuals
     id: number;
     lang: string;
     name: string;
 
-    constructor(at: number, id: number, name: string, lang: string) {
-        this.activation_time = at;
+    constructor(id: number, name: string, lang: string) {
         this.id = id;
         this.lang = lang;
         this.name = name;
@@ -40,14 +39,12 @@ class Chat {
 class Parser {
     forwards: Forward[];
     chats: Chat[];
-    complete: Boolean;
     fwd_path: string;
     chat_path: string;
 
     constructor(fwd_path: string, chat_path: string) {
         this.forwards = [];
         this.chats = [];
-        this.complete = false;
         this.fwd_path = fwd_path;
         this.chat_path = chat_path;
 
@@ -60,8 +57,8 @@ class Parser {
             // load the forward data
             fetch(P.fwd_path).then((res) => res.text()).then((text) => {
                 let lines = text.split("\n");
-                let n = lines.length;
                 for (let i = 1; i < lines.length; i++) {
+                    if (lines[i].trim() === "") continue;
                     let parts = lines[i].split(',');
                     let from = parseInt(parts[1]);
                     let to = parseInt(parts[2]);
@@ -76,13 +73,13 @@ class Parser {
                 // load chat data
                 fetch(P.chat_path).then((res) => res.text()).then((text) => {
                     let lines = text.split("\n");
-                    let n = lines.length;
                     for (let i = 1; i < lines.length; i++) {
+                        if (lines[i].trim() === "") continue;
                         let parts = lines[i].split(',');
                         let id = parseInt(parts[2]);
                         let name = parts[4];
                         let lang = parts[5];
-                        let chat = new Chat(0, id, name, lang);
+                        let chat = new Chat(id, name, lang);
                         P.chats.push(chat);
                     }
                     resolve();
@@ -97,34 +94,12 @@ const container = document.getElementById("container") as HTMLElement;
 const current_time_element = document.getElementById("current_time") as HTMLElement;
 const pausePlayBtn = document.getElementById("pause-play-btn") as HTMLButtonElement;
 const restartBtn = document.getElementById("restart-btn") as HTMLButtonElement;
-const num_nodes = 100;
 
 // Animation control state
 let isPaused = false;
 let animationResolver: (() => void) | null = null;
 let shouldRestart = false;
-let restartResolver: (() => void) | null = null;
 let isAnimationComplete = false;
-
-// mock message data
-const num_messages = 6000;
-
-function create_mock_messages(num_messages) {
-    let forward_messages = [];
-
-    let time = 0;
-    for (let i = 0; i < num_messages; i++) {
-        time += Math.random();
-        let from_chat_id = Math.floor(Math.random() * num_nodes);
-        let to_chat_id = Math.floor(Math.random() * num_nodes);
-        forward_messages.push({
-            time: time,
-            from_chat_id: from_chat_id,
-            to_chat_id: to_chat_id
-        });
-    }
-    return forward_messages;
-}
 
 //==============================================================================
 // Visualization
@@ -232,8 +207,6 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
     if (node1_id == node2_id) {
         return
     }
-    let node1_label = names[node1_id];
-    let node2_label = names[node2_id];
 
     // if none of the nodes exist, add them in the center with a random noise
     if (!graph.hasNode(node1_id) && !graph.hasNode(node2_id)) {
@@ -252,25 +225,21 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
         place_new_node(graph, node2_id, node1_coords.x, node1_coords.y);
     }
 
-    function update_edge_properties(nodeA, nodeB) {
-        if (graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
-            graph.updateEdge(node1_id, node2_id, attr => {
-                return {
-                    ...attr,
-                    // size: 1 + Math.log(attr.weight + 1),
-                    size: 1 + attr.log_A,
-                    weight: (attr.weight || 0) + 1,
-                    log_A: Math.log(1 + Math.exp(attr.log_A) * Math.exp(-scale_exp_decay * (Tnow - attr.Tlast))),
-                    Tlast: Tnow,
-                };
-            });
-        }
-    }
-    update_edge_properties(node1_id, node2_id);
-    update_edge_properties(node2_id, node1_id);
-
-    // if the edge does not exist, add it
-    if (!graph.hasEdge(node1_id, node2_id) && !graph.hasEdge(node2_id, node1_id)) {
+    // links are undirected: update the edge in whichever direction it was created
+    let edge = graph.edge(node1_id, node2_id) ?? graph.edge(node2_id, node1_id);
+    if (edge !== undefined) {
+        graph.updateEdgeAttributes(edge, attr => {
+            return {
+                ...attr,
+                // size: 1 + Math.log(attr.weight + 1),
+                size: 1 + attr.log_A,
+                weight: (attr.weight || 0) + 1,
+                log_A: Math.log(1 + Math.exp(attr.log_A) * Math.exp(-scale_exp_decay * (Tnow - attr.Tlast))),
+                Tlast: Tnow,
+            };
+        });
+    } else {
+        // if the edge does not exist, add it
         let style = getComputedStyle(document.body);
         let edge_color = style.getPropertyValue('--text-light');
         graph.addEdge(node1_id, node2_id, { color: edge_color, weight: 1, log_A: 0, Tlast: Tnow });
@@ -282,56 +251,8 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
 //===============================================================
 // Telegram data
 
-function to_simulation_time(real_time) {
-    // how long should the simulation take in seconds
-    let total_sim_time = 10.0;
-    let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
-    // real time that corresponds to sim_time = 0
-    let start_time = Date.parse("2020-06-06");
-    let sim_time = total_sim_time * (real_time - start_time) / miliseconds_per_year;
-    return sim_time;
-}
-
-function to_real_time(simulation_time) {
-    // how long should the simulation take in seconds
-    let total_sim_time = 100.0;
-    let miliseconds_per_year = 5 * 365 * 24 * 60 * 60 * 1000;
-    // real time that corresponds to sim_time = 0
-    let start_time = Date.parse("2020-06-06");
-    let real_time = start_time + simulation_time * miliseconds_per_year / total_sim_time;
-    return real_time;
-}
-
-async function step(graph, time, forward_message) {
-    // Check if restart was requested
-    if (shouldRestart) {
-        throw new Error("RESTART_REQUESTED");
-    }
-
-    let delta_time_real = forward_message.time - time;
-    let delta_time_sim = to_simulation_time(delta_time_real);
-
-    let node1 = forward_message.from_chat_id;
-    let node2 = forward_message.to_chat_id;
-
-    // sleep for time step
-    await new Promise((resolve) => setTimeout(resolve, delta_time_sim * 1000));
-
-    // Check if paused and wait if necessary
-    if (isPaused) {
-        await new Promise<void>((resolve) => {
-            animationResolver = resolve;
-        });
-    }
-
-    // Check again if restart was requested while paused
-    if (shouldRestart) {
-        throw new Error("RESTART_REQUESTED");
-    }
-
-    place_some_edge(graph, node1, node2, time);
-
-    return graph;
+function next_frame() {
+    return new Promise<number>((resolve) => requestAnimationFrame(resolve));
 }
 
 function setAnimationComplete() {
@@ -397,7 +318,7 @@ function setupPausePlayButton() {
 }
 
 
-let parse = new Parser("public/norsk_forwards.csv", "public/norsk_chats.csv");
+let parse = new Parser("public/scandinavian_forwards.csv", "public/scandinavian_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
 let color = new Array(parse.chats.length);
@@ -427,43 +348,54 @@ for (let i = 0; i < color.length; i++) {
     names[id] = parse.chats[i].name;
 }
 
+function show_time(real_time) {
+    current_time_element.innerHTML = new Date(real_time).toLocaleDateString("de-DE");
+}
+
 async function runAnimation(graph) {
-    let sim_time = 0;
-    let real_time = to_real_time(sim_time);
-    let real_time_string = new Date(real_time).toLocaleDateString("de-DE");
+    const n = forward_messages.length;
+    const start_time = forward_messages[0].time;
+    const end_time = forward_messages[n - 1].time;
+    // data milliseconds per wall-clock millisecond
+    const speed = (end_time - start_time) / (animation_duration_s * 1000);
 
-    current_time_element.innerHTML = real_time_string;
+    let real_time = start_time;
+    let i = 0;
+    show_time(real_time);
 
-    for (let i = 0; i < parse.forwards.length; i++) {
-        let message = forward_messages[i];
-        real_time = message.time;
-        real_time_string = new Date(real_time).toLocaleDateString("de-DE");
-        current_time_element.innerHTML = real_time_string;
-
-        try {
-            await step(graph, real_time, message);
-        } catch (error) {
-            if (error.message === "RESTART_REQUESTED") {
-                throw error; // Re-throw to be caught by the main loop
-            }
-            console.error("Unexpected error:", error);
-            break;
+    let last_frame = await next_frame();
+    while (i < n) {
+        const now = await next_frame();
+        if (shouldRestart) {
+            throw new Error("RESTART_REQUESTED");
         }
 
-        /*console.log(message);
-        console.log(new Date(time));
-        console.log(i);*/
-        const degrees = graph.mapNodes((node) => {
-            return graph.degree(node);
-        });
-        //console.log(degrees);
-        graph.forEachNode((node, i) => {
+        if (isPaused) {
+            await new Promise<void>((resolve) => {
+                animationResolver = resolve;
+            });
+            last_frame = await next_frame(); // don't count the paused time
+            continue;
+        }
+
+        real_time += Math.min(now - last_frame, max_frame_ms) * speed;
+        last_frame = now;
+
+        // add all forwards that happened up to the current time
+        while (i < n && forward_messages[i].time <= real_time) {
+            const message = forward_messages[i];
+            place_some_edge(graph, message.from_chat_id, message.to_chat_id, message.time);
+            i++;
+        }
+        show_time(Math.min(real_time, end_time));
+
+        graph.forEachNode((node) => {
             graph.mergeNodeAttributes(node, {
                 size: 3 * (1 + Math.log(1 + graph.degree(node)))
                 // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
             });
         });
-        graph.forEachEdge((edge, i) => {
+        graph.forEachEdge((edge) => {
             if (scale_exp_decay * (real_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
                 graph.dropEdge(edge);
             };

@@ -1,18 +1,13 @@
 {
   "dependencies": {
-    "@types/node": "^22.5.0",
-    "@types/sigmajs": "^1.0.32",
-    "chroma-js": "^3.0.0",
     "graphology": "^0.25.4",
     "graphology-layout-force": "^0.2.4",
-    "graphology-layout-forceatlas2": "^0.10.1",
     "kotatsu": "^0.23.1",
     "sigma": "^3.0.0-beta.28",
-    "typescript": "^5.5.4",
-    "uuid": "^10.0.0"
+    "typescript": "^5.5.4"
   },
   "scripts": {
-    "start": "kotatsu serve drag_n_drop_example.ts --index index.html --ts --html5-routing --public /public ./public",
-    "build": "tsc drag_n_drop_example.ts"
+    "start": "kotatsu serve network_animation.ts --index index.html --ts --html5-routing --public /public ./public",
+    "build": "kotatsu build client network_animation.ts -o build/bundle.js --ts --production"
   }
 }

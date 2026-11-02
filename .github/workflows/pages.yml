@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npx kotatsu build client drag_n_drop_example.ts -o build/bundle.js --ts --production
+      - run: npm run build
       - name: Assemble site
         run: |
           mkdir -p _site/build
