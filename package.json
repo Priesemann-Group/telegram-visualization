@@ -12,7 +12,7 @@
     "uuid": "^10.0.0"
   },
   "scripts": {
-    "start": "kotatsu serve drag_n_drop_example.ts --index sigma_example.html --ts --html5-routing --public /public ./public",
+    "start": "kotatsu serve drag_n_drop_example.ts --index index.html --ts --html5-routing --public /public ./public",
     "build": "tsc drag_n_drop_example.ts"
   }
 }
