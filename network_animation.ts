@@ -113,6 +113,13 @@ function hex_to_rgb(hex: string) {
 const active_edge_rgb = hex_to_rgb(active_edge_color);
 const old_edge_rgb = hex_to_rgb(old_edge_color);
 
+function edge_color(weight: number) {
+    // 0 for weight >= 1, 1 once the weight has decayed by gray_after_half_lives half-lives
+    const age = Math.min(Math.max(-Math.log2(weight) / gray_after_half_lives, 0), 1);
+    const rgb = active_edge_rgb.map((c, i) => Math.round(c + age * (old_edge_rgb[i] - c)));
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
 // Retrieve the html document for sigma container
 const container = document.getElementById("container") as HTMLElement;
 const current_time_element = document.getElementById("current_time") as HTMLElement;
@@ -341,10 +348,10 @@ function update_nodes_and_edges(graph) {
     });
     // links are never removed; their width shows the current, decayed weight
     graph.forEachEdge((edge, attr) => {
-        const since_forward = current_time - attr.Tlast;
-        const weight = Math.exp(attr.log_A - scale_exp_decay * since_forward);
+        const weight = Math.exp(attr.log_A - scale_exp_decay * (current_time - attr.Tlast));
         graph.mergeEdgeAttributes(edge, {
             size: edge_width(weight),
+            color: edge_color(weight),
         });
     });
 }
@@ -441,7 +448,7 @@ function init_link_legend() {
         row.innerHTML = `<span class="legend-swatch"><span class="legend-line"></span></span>`;
         const line = row.querySelector(".legend-line") as HTMLElement;
         line.style.height = `${edge_width(weight)}px`;
-        line.style.backgroundColor = active_edge_color;
+        line.style.backgroundColor = edge_color(weight);
         row.append(label);
         link_legend.appendChild(row);
     }
