@@ -447,7 +447,8 @@ function init_link_legend() {
         row.className = "legend-row";
         row.innerHTML = `<span class="legend-swatch"><span class="legend-line"></span></span>`;
         const line = row.querySelector(".legend-line") as HTMLElement;
-        line.style.height = `${edge_width(weight)}px`;
+        // at least 1px, since thinner lines can disappear in HTML (sigma draws them anti-aliased)
+        line.style.height = `${Math.max(1, edge_width(weight))}px`;
         line.style.backgroundColor = edge_color(weight);
         row.append(label);
         link_legend.appendChild(row);
