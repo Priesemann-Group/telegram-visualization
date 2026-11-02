@@ -4,7 +4,7 @@
     "graphology": "^0.25.4",
     "graphology-layout-force": "^0.2.4",
     "kotatsu": "^0.23.1",
-    "sigma": "^3.0.0-beta.28",
+    "sigma": "^3.0.3",
     "typescript": "^5.5.4"
   },
   "scripts": {

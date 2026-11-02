@@ -4,9 +4,15 @@ import Sigma from "sigma";
 import { createNodeBorderProgram } from "@sigma/node-border";
 
 
-// const scale_exp_decay = 0.000001;
-const scale_exp_decay = 0.00000001;
-const log_thresh = -5000;
+// decay rate of the link weights, in 1/ms: 1 / time constant (τ = 14 days)
+const decay_time_constant_days = 14;
+const scale_exp_decay = 1 / (decay_time_constant_days * 24 * 60 * 60 * 1000);
+// edge width in pixels: min_edge_width + edge_width_scale * ln(1 + weight).
+// The log keeps the heavy-tailed weights readable; fully decayed links stay visible as thin lines.
+const min_edge_width = 0.5;
+const edge_width_scale = 1.2;
+// links fade from the active color (weight >= 1) to gray, which they reach after this many half-lives
+const gray_after_half_lives = 3;
 // wall-clock duration of the whole animation, in seconds
 const animation_duration_s = 100;
 // the animation starts at this date; earlier forwards are added to the graph instantly
@@ -91,6 +97,21 @@ class Parser {
         });
     }
 };
+
+// Edge colors from the page theme: active links in the text color, old links in a dim gray
+const page_style = getComputedStyle(document.body);
+const active_edge_color = page_style.getPropertyValue('--text').trim();
+const old_edge_color = page_style.getPropertyValue('--border').trim();
+
+function hex_to_rgb(hex: string) {
+    let digits = hex.replace("#", "");
+    if (digits.length === 3) digits = digits.split("").map((d) => d + d).join(""); // e.g. #666
+    const value = parseInt(digits, 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+const active_edge_rgb = hex_to_rgb(active_edge_color);
+const old_edge_rgb = hex_to_rgb(old_edge_color);
 
 // Retrieve the html document for sigma container
 const container = document.getElementById("container") as HTMLElement;
@@ -244,8 +265,6 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
         graph.updateEdgeAttributes(edge, attr => {
             return {
                 ...attr,
-                // size: 1 + Math.log(attr.weight + 1),
-                size: 1 + attr.log_A,
                 weight: (attr.weight || 0) + 1,
                 log_A: Math.log(1 + Math.exp(attr.log_A) * Math.exp(-scale_exp_decay * (Tnow - attr.Tlast))),
                 Tlast: Tnow,
@@ -253,9 +272,7 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
         });
     } else {
         // if the edge does not exist, add it
-        let style = getComputedStyle(document.body);
-        let edge_color = style.getPropertyValue('--text-light');
-        graph.addEdge(node1_id, node2_id, { color: edge_color, weight: 1, log_A: 0, Tlast: Tnow });
+        graph.addEdge(node1_id, node2_id, { color: active_edge_color, weight: 1, log_A: 0, Tlast: Tnow });
     }
 
     return graph;
@@ -316,16 +333,19 @@ let is_playing = true;
 let is_scrubbing = false;
 
 function update_nodes_and_edges(graph) {
+    // (sigma's bulk updateEach*Attributes handlers fail on elements added since the last render,
+    // so the attributes are set one by one)
     graph.forEachNode((node) => {
-        graph.mergeNodeAttributes(node, {
-            size: 3 * (1 + Math.log(1 + graph.degree(node)))
-            // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
-        });
+        graph.setNodeAttribute(node, "size", 3 * (1 + Math.log(1 + graph.degree(node))));
+        // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
     });
-    graph.forEachEdge((edge) => {
-        if (scale_exp_decay * (current_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
-            graph.dropEdge(edge);
-        };
+    // links are never removed; their width shows the current, decayed weight
+    graph.forEachEdge((edge, attr) => {
+        const since_forward = current_time - attr.Tlast;
+        const weight = Math.exp(attr.log_A - scale_exp_decay * since_forward);
+        graph.mergeEdgeAttributes(edge, {
+            size: edge_width(weight),
+        });
     });
 }
 
@@ -397,6 +417,42 @@ function init_time_slider(graph) {
     });
 }
 
+function edge_width(weight: number) {
+    return min_edge_width + edge_width_scale * Math.log(1 + weight);
+}
+
+// Legend for the link width and color, generated from the same settings as the edges
+function init_link_legend() {
+    const link_legend = document.getElementById("link-legend") as HTMLElement;
+    const half_life_days = Math.LN2 * decay_time_constant_days;
+    // the window after which links are gray, rounded to a round number of days (e.g. 29 -> 30)
+    const gray_after_days = gray_after_half_lives * half_life_days;
+    const window_days = gray_after_days >= 10 ? Math.round(gray_after_days / 10) * 10 : Math.round(gray_after_days);
+    (document.getElementById("link-legend-title") as HTMLElement).textContent = `Forwards in the last ${window_days} days`;
+    const entries = [
+        { weight: 100, label: "≈ 100" },
+        { weight: 10, label: "≈ 10" },
+        { weight: 1, label: "1" },
+        { weight: 2 ** -gray_after_half_lives, label: "none" },
+    ];
+    for (const { weight, label } of entries) {
+        const row = document.createElement("div");
+        row.className = "legend-row";
+        row.innerHTML = `<span class="legend-swatch"><span class="legend-line"></span></span>`;
+        const line = row.querySelector(".legend-line") as HTMLElement;
+        line.style.height = `${edge_width(weight)}px`;
+        line.style.backgroundColor = active_edge_color;
+        row.append(label);
+        link_legend.appendChild(row);
+    }
+    const note = document.createElement("div");
+    note.className = "legend-row";
+    note.style.color = "var(--text-light)";
+    note.style.fontSize = "0.8rem";
+    note.textContent = `weighted by recency, half-life ${half_life_days.toFixed(1)} days`;
+    link_legend.appendChild(note);
+}
+
 function init_buttons(graph) {
     pausePlayBtn.addEventListener("click", () => set_playing(!is_playing));
     restartBtn.addEventListener("click", () => {
@@ -410,6 +466,7 @@ function init_buttons(graph) {
     init_visualization(graph);
     init_time_slider(graph);
     init_buttons(graph);
+    init_link_legend();
 
     seek(graph, timeline_start);
 

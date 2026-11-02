@@ -116,13 +116,40 @@
         height: 6px;
         border-left: 1px solid var(--text-light);
       }
+      #legend {
+        display: flex;
+        gap: 4rem;
+        margin: 1rem 0;
+      }
+      .legend-title {
+        font-weight: bold;
+        margin-bottom: 0.3rem;
+      }
+      .legend-row {
+        display: flex;
+        align-items: center;
+        height: 1.8rem;
+      }
+      .legend-swatch {
+        display: inline-flex;
+        align-items: center;
+        width: 30px;
+        margin-right: 2ex;
+      }
+      .legend-swatch .dot {
+        margin-right: 0;
+      }
+      .legend-line {
+        width: 100%;
+        border-radius: 1px;
+      }
     </style>
   </head>
   <body>
     <h1>🌌 Telegram graph visualization</h1>
-    <p>The evolution of Scandinavian telegram channels over time. <br>
-      Nodes represent channels, links represent messages forwarded between the channels; these links decay with a time constant of τ ≈ 1 day.
-      The visualization shows clustering along the different languages, together with emergent cross-links. Hover over a node to see the channel name and to explore the embedding of the node in the network.
+    <p>The evolution of Scandinavian telegram channels over time.  <br><br>
+      Nodes represent channels, links represent messages forwarded between the channels; the width of a link shows how actively messages are forwarded along it, decaying with a time constant of τ = 14 days. <br><br>
+      The visualization shows clustering along the different languages, together with emergent cross-links. Hover over a node to see the channel name and to explore the embedding of the node in the network. Right-click on a node to see its Telegram channel. 
       <ul>
       <li>391 nodes (channels)</li>
       <li>1890 distinct links</li>
@@ -141,12 +168,20 @@
         </div>
         <span id="current_time"></span>
     </div>
-    <p>
-        <span class="dot" style="background-color: #BA0C2F"></span>Norway<br>
-        <span class="dot" style="background-color: rgb(50, 204, 255)"></span>Finland<br>
-        <span class="dot" style="background-color: #FFCD00"></span>Sweden<br>
-        <span class="dot" style="background-color: rgb(244, 142, 59)"></span>Denmark<br>
-    </p>
+    <div id="legend">
+        <div class="legend-section">
+            <div class="legend-title">Channel language</div>
+            <div class="legend-row"><span class="legend-swatch"><span class="dot" style="background-color: #BA0C2F"></span></span>Norway</div>
+            <div class="legend-row"><span class="legend-swatch"><span class="dot" style="background-color: rgb(50, 204, 255)"></span></span>Finland</div>
+            <div class="legend-row"><span class="legend-swatch"><span class="dot" style="background-color: #FFCD00"></span></span>Sweden</div>
+            <div class="legend-row"><span class="legend-swatch"><span class="dot" style="background-color: rgb(244, 142, 59)"></span></span>Denmark</div>
+        </div>
+        <div class="legend-section">
+            <div class="legend-title" id="link-legend-title">Forwards in the last 30 days</div>
+            <!-- filled in by network_animation.ts from the edge width and color settings -->
+            <div id="link-legend"></div>
+        </div>
+    </div>
     <script src="build/bundle.js"></script>
   </body>
 </html>
