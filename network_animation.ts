@@ -1,6 +1,7 @@
 import Graph from "graphology";
 import ForceSupervisor from "graphology-layout-force/worker";
 import Sigma from "sigma";
+import { createNodeBorderProgram } from "@sigma/node-border";
 
 
 // const scale_exp_decay = 0.000001;
@@ -8,6 +9,8 @@ const scale_exp_decay = 0.00000001;
 const log_thresh = -5000;
 // wall-clock duration of the whole animation, in seconds
 const animation_duration_s = 100;
+// the animation starts at this date; earlier forwards are added to the graph instantly
+const animation_start_date = "2020-01-01T00:00:00";
 // cap on the wall-clock time advanced per frame, so that e.g. a hidden tab doesn't cause a jump
 const max_frame_ms = 100;
 
@@ -94,12 +97,10 @@ const container = document.getElementById("container") as HTMLElement;
 const current_time_element = document.getElementById("current_time") as HTMLElement;
 const pausePlayBtn = document.getElementById("pause-play-btn") as HTMLButtonElement;
 const restartBtn = document.getElementById("restart-btn") as HTMLButtonElement;
-
-// Animation control state
-let isPaused = false;
-let animationResolver: (() => void) | null = null;
-let shouldRestart = false;
-let isAnimationComplete = false;
+const play_icon = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const pause_icon = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+const timeSlider = document.getElementById("time-slider") as HTMLInputElement;
+const timeTicks = document.getElementById("time-ticks") as HTMLElement;
 
 //==============================================================================
 // Visualization
@@ -110,10 +111,22 @@ function init_visualization(graph) {
     // // const layout = new ForceSupervisor(graph, { settings: { gravity: 3 } });
     layout.start();
 
+    // Draw every node with a thin outline in the page background color, so that overlapping
+    // nodes of the same color stay distinguishable
+    const background_color = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+    const NodeOutlineProgram = createNodeBorderProgram({
+        borders: [
+            { size: { value: 1.5, mode: "pixels" }, color: { value: background_color } },
+            { size: { fill: true }, color: { attribute: "color" } },
+        ],
+    });
+
     // Create the sigma with settings to hide labels by default
     const renderer = new Sigma(graph, container, {
         renderLabels: false, // Hide all labels by default
-        renderEdgeLabels: false
+        renderEdgeLabels: false,
+        defaultNodeType: "outlined",
+        nodeProgramClasses: { outlined: NodeOutlineProgram },
     });
 
     enable_drag_n_drop(graph, renderer);
@@ -251,73 +264,6 @@ function place_some_edge(graph, node1_id, node2_id, Tnow) {
 //===============================================================
 // Telegram data
 
-function next_frame() {
-    return new Promise<number>((resolve) => requestAnimationFrame(resolve));
-}
-
-function setAnimationComplete() {
-    isAnimationComplete = true;
-    isPaused = true;
-    pausePlayBtn.innerHTML = 'Play';
-    pausePlayBtn.disabled = true;
-    pausePlayBtn.style.opacity = '0.5';
-    pausePlayBtn.style.cursor = 'not-allowed';
-    console.log("Animation completed - all timestamps processed");
-}
-
-function resetAnimationState() {
-    isAnimationComplete = false;
-    isPaused = false;
-    pausePlayBtn.innerHTML = 'Pause';
-    pausePlayBtn.disabled = false;
-    pausePlayBtn.style.opacity = '1';
-    pausePlayBtn.style.cursor = 'pointer';
-}
-
-// Setup pause/play button functionality
-function setupPausePlayButton() {
-    pausePlayBtn.addEventListener('click', () => {
-        // Don't allow play if animation is complete
-        if (isAnimationComplete) {
-            return;
-        }
-
-        isPaused = !isPaused;
-
-        if (isPaused) {
-            pausePlayBtn.innerHTML = 'Play';
-            // pausePlayBtn.style.background = '#f44336';
-        } else {
-            pausePlayBtn.innerHTML = 'Pause';
-            // pausePlayBtn.style.background = '#4CAF50';
-
-            // Resume animation if it was waiting
-            if (animationResolver) {
-                animationResolver();
-                animationResolver = null;
-            }
-        }
-    });
-
-    restartBtn.addEventListener('click', () => {
-        shouldRestart = true;
-
-        // Reset animation state when restarting
-        resetAnimationState();
-
-        // If paused, resume to allow restart to proceed
-        if (isPaused && animationResolver) {
-            animationResolver();
-            animationResolver = null;
-        }
-
-        // Reset pause state
-        isPaused = false;
-        pausePlayBtn.innerHTML = 'Pause';
-    });
-}
-
-
 let parse = new Parser("public/scandinavian_forwards.csv", "public/scandinavian_chats.csv");
 await parse.load_data();
 const forward_messages = parse.forwards;
@@ -349,100 +295,136 @@ for (let i = 0; i < color.length; i++) {
 }
 
 function show_time(real_time) {
-    current_time_element.innerHTML = new Date(real_time).toLocaleDateString("de-DE");
+    current_time_element.textContent = new Date(real_time).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-async function runAnimation(graph) {
-    const n = forward_messages.length;
-    const start_time = forward_messages[0].time;
-    const end_time = forward_messages[n - 1].time;
-    // data milliseconds per wall-clock millisecond
-    const speed = (end_time - start_time) / (animation_duration_s * 1000);
+//===============================================================
+// Playback
 
-    let real_time = start_time;
-    let i = 0;
-    show_time(real_time);
+// the timeline starts at the animation start date; forwards before it are part of the initial graph
+const timeline_start = Date.parse(animation_start_date);
+const timeline_end = forward_messages[forward_messages.length - 1].time;
+// data milliseconds per wall-clock millisecond
+const speed = (timeline_end - timeline_start) / (animation_duration_s * 1000);
 
-    let last_frame = await next_frame();
-    while (i < n) {
-        const now = await next_frame();
-        if (shouldRestart) {
-            throw new Error("RESTART_REQUESTED");
-        }
+// Playback state. The graph always contains exactly the forwards before index `next_forward`,
+// i.e. all forwards with time <= `current_time`.
+let current_time = timeline_start;
+let next_forward = 0;
+let is_playing = true;
+// true while the user drags the slider; the graph is only rebuilt on release
+let is_scrubbing = false;
 
-        if (isPaused) {
-            await new Promise<void>((resolve) => {
-                animationResolver = resolve;
-            });
-            last_frame = await next_frame(); // don't count the paused time
-            continue;
-        }
-
-        real_time += Math.min(now - last_frame, max_frame_ms) * speed;
-        last_frame = now;
-
-        // add all forwards that happened up to the current time
-        while (i < n && forward_messages[i].time <= real_time) {
-            const message = forward_messages[i];
-            place_some_edge(graph, message.from_chat_id, message.to_chat_id, message.time);
-            i++;
-        }
-        show_time(Math.min(real_time, end_time));
-
-        graph.forEachNode((node) => {
-            graph.mergeNodeAttributes(node, {
-                size: 3 * (1 + Math.log(1 + graph.degree(node)))
-                // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
-            });
+function update_nodes_and_edges(graph) {
+    graph.forEachNode((node) => {
+        graph.mergeNodeAttributes(node, {
+            size: 3 * (1 + Math.log(1 + graph.degree(node)))
+            // size: 2.1 + 0.85 * Math.sqrt(graph.degree(node))
         });
-        graph.forEachEdge((edge) => {
-            if (scale_exp_decay * (real_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
-                graph.dropEdge(edge);
-            };
-        });
+    });
+    graph.forEachEdge((edge) => {
+        if (scale_exp_decay * (current_time - graph.getEdgeAttribute(edge, "Tlast")) > graph.getEdgeAttribute(edge, "log_A") - log_thresh) {
+            graph.dropEdge(edge);
+        };
+    });
+}
+
+// Move the graph to time t. Jumping backwards rebuilds the graph from the beginning.
+function seek(graph, t) {
+    t = Math.min(Math.max(t, timeline_start), timeline_end);
+    if (t < current_time) {
+        graph.clear();
+        next_forward = 0;
+    }
+    // add all forwards that happened up to time t
+    while (next_forward < forward_messages.length && forward_messages[next_forward].time <= t) {
+        const message = forward_messages[next_forward];
+        place_some_edge(graph, message.from_chat_id, message.to_chat_id, message.time);
+        next_forward++;
+    }
+    current_time = t;
+    update_nodes_and_edges(graph);
+    update_controls();
+}
+
+function set_playing(playing) {
+    is_playing = playing && current_time < timeline_end;
+    update_controls();
+}
+
+function update_controls() {
+    const at_end = current_time >= timeline_end;
+    const label = is_playing ? "Pause" : "Play";
+    if (pausePlayBtn.title !== label || pausePlayBtn.childElementCount === 0) {
+        pausePlayBtn.innerHTML = is_playing ? pause_icon : play_icon;
+        pausePlayBtn.title = label;
+        pausePlayBtn.setAttribute("aria-label", label);
+    }
+    pausePlayBtn.disabled = at_end;
+    if (!is_scrubbing) {
+        timeSlider.value = String(current_time);
+        show_time(current_time);
+    }
+}
+
+function init_time_slider(graph) {
+    timeSlider.min = String(timeline_start);
+    timeSlider.max = String(timeline_end);
+    timeSlider.step = "any";
+
+    // one tick per year; positions account for the thumb not reaching the very edges of the track
+    const first_year = new Date(timeline_start - 1).getFullYear() + 1; // includes the start year if it starts on Jan 1
+    const last_year = new Date(timeline_end).getFullYear();
+    for (let year = first_year; year <= last_year; year++) {
+        const fraction = (new Date(year, 0, 1).getTime() - timeline_start) / (timeline_end - timeline_start);
+        const tick = document.createElement("div");
+        tick.className = "time-tick";
+        tick.style.left = `calc(var(--thumb-size) / 2 + ${fraction} * (100% - var(--thumb-size)))`;
+        tick.textContent = String(year);
+        timeTicks.appendChild(tick);
     }
 
-    // Animation completed - set the completion state
-    setAnimationComplete();
+    // while dragging, only preview the date
+    timeSlider.addEventListener("input", () => {
+        is_scrubbing = true;
+        show_time(Number(timeSlider.value));
+    });
+    // on release, jump to the selected time
+    timeSlider.addEventListener("change", () => {
+        is_scrubbing = false;
+        seek(graph, Number(timeSlider.value));
+        set_playing(is_playing);
+    });
 }
 
-(async () => {
+function init_buttons(graph) {
+    pausePlayBtn.addEventListener("click", () => set_playing(!is_playing));
+    restartBtn.addEventListener("click", () => {
+        seek(graph, timeline_start);
+        set_playing(true);
+    });
+}
+
+(() => {
     let graph = new Graph();
-    let renderer = init_visualization(graph);
+    init_visualization(graph);
+    init_time_slider(graph);
+    init_buttons(graph);
 
-    // Setup pause/play functionality
-    setupPausePlayButton();
+    seek(graph, timeline_start);
 
-    while (true) {
-        try {
-            // Reset restart flag
-            shouldRestart = false;
-
-            // Clear the graph for restart
-            graph.clear();
-
-            await runAnimation(graph);
-
-            // If we reach here, animation completed normally
-            // Wait for restart instead of breaking
-            await new Promise<void>((resolve) => {
-                const waitForRestart = () => {
-                    if (shouldRestart) {
-                        resolve();
-                    } else {
-                        setTimeout(waitForRestart, 100);
-                    }
-                };
-                waitForRestart();
-            });
-        } catch (error) {
-            if (error.message === "RESTART_REQUESTED") {
-                console.log("Restarting animation...");
-                continue; // Restart the loop
-            } else {
-                console.error("Animation error:", error);
-                break;
+    let last_frame = performance.now();
+    function frame(now) {
+        const dt = Math.min(now - last_frame, max_frame_ms);
+        last_frame = now;
+        if (is_playing && !is_scrubbing) {
+            seek(graph, current_time + dt * speed);
+            if (current_time >= timeline_end) {
+                set_playing(false);
+                console.log("Animation completed - all timestamps processed");
             }
         }
+        requestAnimationFrame(frame);
     }
+    requestAnimationFrame(frame);
 })();

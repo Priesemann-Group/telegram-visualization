@@ -8,6 +8,115 @@
     <link rel="icon" type="image/png" sizes="32x32" href="public/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="public/favicon/favicon-16x16.png">
     <link rel="manifest" href="public/favicon/site.webmanifest">
+    <style>
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 800px;
+        margin: 10px 0 0;
+        padding-bottom: 1.8em; /* room for the year labels below the slider */
+      }
+      .icon-btn {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--bg);
+        cursor: pointer;
+      }
+      .icon-btn svg {
+        width: 22px;
+        height: 22px;
+        fill: currentColor;
+      }
+      .icon-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      #restart-btn {
+        background: var(--accent-bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      #timeline {
+        /* slider thumb size, also used to align the year ticks */
+        --thumb-size: 16px;
+        flex: 1;
+        position: relative;
+      }
+      #current_time {
+        flex: none;
+        min-width: 6.5em;
+        text-align: right;
+        font-size: 1rem;
+        font-variant-numeric: tabular-nums;
+      }
+      #time-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: var(--thumb-size);
+        margin: 0;
+        border: none;
+        background: none;
+        cursor: pointer;
+      }
+      #time-slider::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border);
+      }
+      #time-slider::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border);
+      }
+      #time-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: var(--thumb-size);
+        height: var(--thumb-size);
+        margin-top: calc(2px - var(--thumb-size) / 2);
+        border: none;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      #time-slider::-moz-range-thumb {
+        width: var(--thumb-size);
+        height: var(--thumb-size);
+        border: none;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      #time-ticks {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+      }
+      .time-tick {
+        position: absolute;
+        transform: translateX(-50%);
+        padding-top: 4px;
+        font-size: 0.8rem;
+        color: var(--text-light);
+      }
+      .time-tick::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        height: 6px;
+        border-left: 1px solid var(--text-light);
+      }
+    </style>
   </head>
   <body>
     <h1>🌌 Telegram graph visualization</h1>
@@ -21,11 +130,17 @@
     </ul>
     </p>
     <div id="container" style="width: 800px; height: 600px; background: #ffffff00"></div>
-    <div style="margin: 10px 0;">
-        <button id="pause-play-btn" style="font-size: 16px; padding: 10px 20px; cursor: pointer;">Pause</button>
-        <button id="restart-btn" style="font-size: 16px; padding: 10px 20px; cursor: pointer;">Restart</button>
+    <div id="controls">
+        <button id="pause-play-btn" class="icon-btn" title="Pause" aria-label="Pause"></button>
+        <button id="restart-btn" class="icon-btn" title="Restart" aria-label="Restart">
+            <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        </button>
+        <div id="timeline">
+            <input type="range" id="time-slider" aria-label="Time">
+            <div id="time-ticks"></div>
+        </div>
+        <span id="current_time"></span>
     </div>
-    <p>Current time: <span id="current_time" style="font-size: 16pt; font-family: sans-serif;"> </span></p>
     <p>
         <span class="dot" style="background-color: #BA0C2F"></span>Norway<br>
         <span class="dot" style="background-color: rgb(50, 204, 255)"></span>Finland<br>

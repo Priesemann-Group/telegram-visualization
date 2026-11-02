@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@sigma/node-border": "^3.0.0",
     "graphology": "^0.25.4",
     "graphology-layout-force": "^0.2.4",
     "kotatsu": "^0.23.1",
